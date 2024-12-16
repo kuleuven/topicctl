@@ -19,6 +19,7 @@ type ACLAdminConfig struct {
 	ClusterConfig config.ClusterConfig
 	DryRun        bool
 	SkipConfirm   bool
+	Delete        bool
 	ACLConfig     config.ACLConfig
 }
 
@@ -99,9 +100,36 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 		)
 	}
 
+	aclsToDelete := []kafka.ACLEntry{}
+
+	if a.config.Delete {
+		clusterACLs, err := a.adminClient.GetACLs(ctx, kafka.ACLFilter{
+			ResourceTypeFilter:        kafka.ResourceTypeAny,
+			ResourcePatternTypeFilter: kafka.PatternTypeAny,
+			PermissionType:            kafka.ACLPermissionTypeAny,
+			Operation:                 kafka.ACLOperationTypeAny,
+		})
+		if err != nil {
+			return fmt.Errorf("error checking for all ACLs: %v", err)
+		}
+		aclsToDelete = util.Difference(toACLEntries(clusterACLs), acls)
+		if len(aclsToDelete) > 0 {
+			log.Infof(
+				"Found %d ACLs to delete:\n%s",
+				len(aclsToDelete),
+				formatNewACLsConfig(aclsToDelete),
+			)
+		}
+	}
+
 	if len(newACLs) == 0 {
-		log.Infof("No ACLs to create")
-		return nil
+		if a.config.Delete && len(aclsToDelete) == 0 {
+			log.Infof("No ACLs to create or delete")
+			return nil
+		} else {
+			log.Infof("No ACLs to create")
+			return nil
+		}
 	}
 
 	if a.config.DryRun {
@@ -109,6 +137,12 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 			"Would create ACLs with config %+v",
 			formatNewACLsConfig(newACLs),
 		)
+		if a.config.Delete {
+			log.Infof(
+				"Would delete ACLs with config %+v",
+				formatNewACLsConfig(aclsToDelete),
+			)
+		}
 		return nil
 	}
 
@@ -126,6 +160,15 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 
 	if err := a.adminClient.CreateACLs(ctx, acls); err != nil {
 		return fmt.Errorf("error creating new ACLs: %v", err)
+	}
+
+	if a.config.Delete {
+		log.Infof("Deleting ACLs with config %+v", formatNewACLsConfig(aclsToDelete))
+
+		deleteACLFilters := toACLDeleteFilters(aclsToDelete)
+		if _, err := a.adminClient.DeleteACLs(ctx, deleteACLFilters); err != nil {
+			return fmt.Errorf("error deleting ACLs: %v", err)
+		}
 	}
 
 	return nil
@@ -231,4 +274,36 @@ func formatACLInfos(acls []admin.ACLInfo) string {
 	}
 
 	return strings.Join(aclsString, "\n")
+}
+
+func toACLEntries(acls []admin.ACLInfo) []kafka.ACLEntry {
+	result := make([]kafka.ACLEntry, 0, len(acls))
+	for _, acl := range acls {
+		result = append(result, kafka.ACLEntry{
+			ResourceType:        kafka.ResourceType(acl.ResourceType),
+			ResourceName:        acl.ResourceName,
+			ResourcePatternType: kafka.PatternType(acl.PatternType),
+			Principal:           acl.Principal,
+			Host:                acl.Host,
+			Operation:           kafka.ACLOperationType(acl.Operation),
+			PermissionType:      kafka.ACLPermissionType(acl.PermissionType),
+		})
+	}
+	return result
+}
+
+func toACLDeleteFilters(acls []kafka.ACLEntry) []kafka.DeleteACLsFilter {
+	result := make([]kafka.DeleteACLsFilter, 0, len(acls))
+	for _, acl := range acls {
+		result = append(result, kafka.DeleteACLsFilter{
+			ResourceTypeFilter:        kafka.ResourceType(acl.ResourceType),
+			ResourceNameFilter:        acl.ResourceName,
+			ResourcePatternTypeFilter: acl.ResourcePatternType,
+			PrincipalFilter:           acl.Principal,
+			HostFilter:                acl.Host,
+			Operation:                 kafka.ACLOperationType(acl.Operation),
+			PermissionType:            kafka.ACLPermissionType(acl.PermissionType),
+		})
+	}
+	return result
 }

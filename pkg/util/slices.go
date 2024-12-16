@@ -30,3 +30,21 @@ func SameElements(slice1 []int, slice2 []int) bool {
 
 	return reflect.DeepEqual(slice1Counts, slice2Counts)
 }
+
+// Returns a slice containing elements from slice1 but not in slice2
+func Difference[T comparable](slice1, slice2 []T) []T {
+	diff := []T{}
+    for _, item1 := range slice1 {
+        found := false
+        for _, item2 := range slice2 {
+            if item1 == item2 {
+                found = true
+                break
+            }
+        }
+        if !found {
+            diff = append(diff, item1)
+        }
+    }
+    return diff	
+}

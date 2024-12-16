@@ -26,6 +26,7 @@ type createCmdConfig struct {
 	dryRun      bool
 	pathPrefix  string
 	skipConfirm bool
+	delete      bool
 
 	shared sharedOptions
 }
@@ -74,6 +75,12 @@ func createACLsCmd() *cobra.Command {
 		RunE:    createACLRun,
 		PreRunE: createPreRun,
 	}
+	cmd.PersistentFlags().BoolVar(
+		&createConfig.delete,
+		"delete",
+		false,
+		"Delete ACLs which are not provided in the list of ACLs ('sync' behavior; requires a single master ACLs specfile)",
+	)
 
 	return cmd
 }
@@ -99,6 +106,10 @@ func createACLRun(cmd *cobra.Command, args []string) error {
 	}()
 
 	matchCount := 0
+
+	if len(args) > 1 && createConfig.delete {
+		return fmt.Errorf("When --delete option is given, only 1 ACLs configuration is allowed")
+	}
 
 	for _, arg := range args {
 		if createConfig.pathPrefix != "" && !filepath.IsAbs(arg) {
@@ -177,6 +188,7 @@ func createACL(
 		aclAdminConfig := acl.ACLAdminConfig{
 			DryRun:        createConfig.dryRun,
 			SkipConfirm:   createConfig.skipConfirm,
+			Delete:        createConfig.delete,
 			ACLConfig:     aclConfig,
 			ClusterConfig: clusterConfig,
 		}
