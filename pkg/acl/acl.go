@@ -123,21 +123,20 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 	}
 
 	if len(newACLs) == 0 {
-		if a.config.Delete && len(aclsToDelete) == 0 {
-			log.Infof("No ACLs to create or delete")
-			return nil
-		} else {
-			log.Infof("No ACLs to create")
-			return nil
-		}
+		log.Infof("No ACLs to create")
+	}
+	if a.config.Delete && len(aclsToDelete) == 0 {
+		log.Infof("No ACLs to delete")
 	}
 
 	if a.config.DryRun {
-		log.Infof(
-			"Would create ACLs with config %+v",
-			formatNewACLsConfig(newACLs),
-		)
-		if a.config.Delete {
+		if len(newACLs) > 0 {
+			log.Infof(
+				"Would create ACLs with config %+v",
+				formatNewACLsConfig(newACLs),
+			)
+		}
+		if len(aclsToDelete) > 0 {
 			log.Infof(
 				"Would delete ACLs with config %+v",
 				formatNewACLsConfig(aclsToDelete),
@@ -146,25 +145,30 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 		return nil
 	}
 
-	log.Infof(
-		"It looks like these ACLs don't already exist. Will create them with this config:\n%s",
-		formatNewACLsConfig(newACLs),
-	)
+	if len(newACLs) > 0 {
+		log.Infof(
+			"It looks like these ACLs don't already exist. Will create them with this config:\n%s",
+			formatNewACLsConfig(newACLs),
+		)
+	}
+	if len(aclsToDelete) > 0 {
+		log.Infof("Will delete ACLs with this config:\n%s", formatNewACLsConfig(aclsToDelete))
+	}
 
 	ok, _ := util.Confirm("OK to continue?", a.config.SkipConfirm)
 	if !ok {
 		return errors.New("Stopping because of user response")
 	}
 
-	log.Infof("Creating new ACLs for user with config %+v", formatNewACLsConfig(newACLs))
-
-	if err := a.adminClient.CreateACLs(ctx, acls); err != nil {
-		return fmt.Errorf("error creating new ACLs: %v", err)
+	if len(newACLs) > 0 {
+		log.Infof("Creating new ACLs for user with config %+v", formatNewACLsConfig(newACLs))
+		if err := a.adminClient.CreateACLs(ctx, acls); err != nil {
+			return fmt.Errorf("error creating new ACLs: %v", err)
+		}
 	}
 
-	if a.config.Delete {
-		log.Infof("Deleting ACLs with config %+v", formatNewACLsConfig(aclsToDelete))
-
+	if len(aclsToDelete) > 0 {
+		log.Infof("Deleting ACLs for user with config %+v", formatNewACLsConfig(aclsToDelete))
 		deleteACLFilters := toACLDeleteFilters(aclsToDelete)
 		if _, err := a.adminClient.DeleteACLs(ctx, deleteACLFilters); err != nil {
 			return fmt.Errorf("error deleting ACLs: %v", err)
