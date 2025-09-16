@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
+	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/topicctl/pkg/util"
 )
 
@@ -1000,6 +1002,15 @@ func FormatBrokerMaxPartitions(
 
 	table.Render()
 	return string(bytes.TrimRight(buf.Bytes(), "\n"))
+}
+
+func FormatQuotas(config []kafka.DescribeClientQuotasResponseQuotas) string {
+	content, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Error marshalling quotas config: %+v", err)
+	}
+
+	return string(content)
 }
 
 // FormatACLs creates a pretty table that lists the details of the

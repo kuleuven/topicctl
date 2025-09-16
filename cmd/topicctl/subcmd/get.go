@@ -71,6 +71,7 @@ func init() {
 		topicsCmd(),
 		aclsCmd(),
 		usersCmd(),
+		quotasCmd(),
 	)
 	RootCmd.AddCommand(getCmd)
 }
@@ -479,4 +480,31 @@ func usersCmd() *cobra.Command {
 			return cliRunner.GetUsers(ctx, nil)
 		},
 	}
+}
+
+func quotasCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "quotas",
+		Short: "Displays information for quotas in the cluster.",
+		Args:  cobra.NoArgs,
+		Example: `List all quotas
+$ topicctl get quotas
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			sess := session.Must(session.NewSession())
+
+			adminClient, err := getConfig.shared.getAdminClient(ctx, sess, true)
+			if err != nil {
+				return err
+			}
+			defer adminClient.Close()
+
+			cliRunner := cli.NewCLIRunner(adminClient, log.Infof, !noSpinner)
+
+			return cliRunner.GetQuotas(ctx)
+		},
+	}
+
+	return cmd
 }

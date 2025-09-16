@@ -21,6 +21,7 @@ import (
 	"github.com/segmentio/topicctl/pkg/config"
 	"github.com/segmentio/topicctl/pkg/groups"
 	"github.com/segmentio/topicctl/pkg/messages"
+	"github.com/segmentio/topicctl/pkg/quota"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -195,6 +196,39 @@ func (c *CLIRunner) DeleteACL(
 	}
 
 	c.printer("Delete completed successfully!")
+	return nil
+}
+
+func (c *CLIRunner) CreateQuota(
+	ctx context.Context,
+	quotaAdminConfig quota.QuotaAdminConfig,
+) error {
+	quotaAdmin, err := quota.NewQuotaAdmin(
+		ctx,
+		c.adminClient,
+		quotaAdminConfig,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	highlighter := color.New(color.FgYellow, color.Bold).SprintfFunc()
+
+	c.printer(
+		"Starting creation for quota %s in environment %s, cluster %s",
+		highlighter(quotaAdminConfig.QuotaConfig.Meta.Name),
+		highlighter(quotaAdminConfig.QuotaConfig.Meta.Environment),
+		highlighter(quotaAdminConfig.QuotaConfig.Meta.Cluster),
+	)
+
+	err = quotaAdmin.Create(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	c.printer("Create completed successfully!")
 	return nil
 }
 
@@ -686,6 +720,21 @@ func (c *CLIRunner) Tail(
 	}
 
 	return err
+}
+
+func (c *CLIRunner) GetQuotas(ctx context.Context) error {
+	c.startSpinner()
+
+	client := c.adminClient.GetConnector().KafkaClient
+	quotaResponse, err := client.DescribeClientQuotas(ctx, &kafka.DescribeClientQuotasRequest{})
+	c.stopSpinner()
+	if err != nil {
+		return err
+	}
+
+	c.printer("Quotas:\n%v", admin.FormatQuotas(quotaResponse.Entries))
+
+	return nil
 }
 
 // GetACLs fetches the details of each acl in the cluster and prints out a summary.

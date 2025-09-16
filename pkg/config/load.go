@@ -125,6 +125,42 @@ func LoadACLBytes(contents []byte) (ACLConfig, error) {
 	return config, err
 }
 
+func LoadQuotasFile(path string) ([]QuotaConfig, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	contents = []byte(os.ExpandEnv(string(contents)))
+
+	trimmedFile := strings.TrimSpace(string(contents))
+	quotaStrs := sep.Split(trimmedFile, -1)
+
+	quotaConfigs := []QuotaConfig{}
+
+	for _, quotaStr := range quotaStrs {
+		quotaStr = strings.TrimSpace(quotaStr)
+		if isEmpty(quotaStr) {
+			continue
+		}
+
+		quotaConfig, err := LoadQuotaBytes([]byte(quotaStr))
+		if err != nil {
+			return nil, err
+		}
+
+		quotaConfigs = append(quotaConfigs, quotaConfig)
+	}
+
+	return quotaConfigs, nil
+}
+
+func LoadQuotaBytes(contents []byte) (QuotaConfig, error) {
+	config := QuotaConfig{}
+	err := unmarshalYAMLStrict(contents, &config)
+	return config, err
+}
+
 // CheckConsistency verifies that the argument topic config is consistent with the argument
 // cluster, e.g. has the same environment and region, etc.
 func CheckConsistency(resourceMeta ResourceMeta, clusterConfig ClusterConfig) error {

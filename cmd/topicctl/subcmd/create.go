@@ -12,6 +12,7 @@ import (
 	"github.com/segmentio/topicctl/pkg/admin"
 	"github.com/segmentio/topicctl/pkg/cli"
 	"github.com/segmentio/topicctl/pkg/config"
+	"github.com/segmentio/topicctl/pkg/quota"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -52,10 +53,17 @@ func init() {
 		false,
 		"Skip confirmation prompts during creation process",
 	)
+	createCmd.PersistentFlags().BoolVar(
+		&createConfig.delete,
+		"delete",
+		false,
+		"Delete resources which are not provided in the list of resources ('sync' behavior; requires a single resources specfile)",
+	)
 
 	addSharedFlags(createCmd, &createConfig.shared)
 	createCmd.AddCommand(
 		createACLsCmd(),
+		createQuotasCmd(),
 	)
 	RootCmd.AddCommand(createCmd)
 }
@@ -75,12 +83,18 @@ func createACLsCmd() *cobra.Command {
 		RunE:    createACLRun,
 		PreRunE: createPreRun,
 	}
-	cmd.PersistentFlags().BoolVar(
-		&createConfig.delete,
-		"delete",
-		false,
-		"Delete ACLs which are not provided in the list of ACLs ('sync' behavior; requires a single master ACLs specfile)",
-	)
+
+	return cmd
+}
+
+func createQuotasCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "quotas [quotas configs]",
+		Short:   "creates quotas from configuration files",
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    createQuotaRun,
+		PreRunE: createPreRun,
+	}
 
 	return cmd
 }
@@ -141,7 +155,7 @@ func createACL(
 	aclConfigPath string,
 	adminClients map[string]admin.Client,
 ) error {
-	clusterConfigPath, err := clusterConfigForACLCreate(aclConfigPath)
+	clusterConfigPath, err := clusterConfigForCreate(aclConfigPath)
 	if err != nil {
 		return err
 	}
@@ -201,7 +215,122 @@ func createACL(
 	return nil
 }
 
-func clusterConfigForACLCreate(aclConfigPath string) (string, error) {
+func createQuotaRun(cmd *cobra.Command, args []string) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	// Keep a cache of the admin clients with the cluster config path as the key
+	adminClients := map[string]admin.Client{}
+
+	defer func() {
+		for _, adminClient := range adminClients {
+			adminClient.Close()
+		}
+	}()
+
+	matchCount := 0
+
+	if len(args) > 1 && createConfig.delete {
+		return fmt.Errorf("When --delete option is given, only 1 quotas configuration is allowed")
+	}
+
+	for _, arg := range args {
+		if createConfig.pathPrefix != "" && !filepath.IsAbs(arg) {
+			arg = filepath.Join(createConfig.pathPrefix, arg)
+		}
+
+		matches, err := filepath.Glob(arg)
+		if err != nil {
+			return err
+		}
+
+		for _, match := range matches {
+			matchCount++
+			if err := createQuota(ctx, match, adminClients); err != nil {
+				return err
+			}
+		}
+	}
+
+	if matchCount == 0 {
+		return fmt.Errorf("No quota configs match the provided args (%+v)", args)
+	}
+
+	return nil
+}
+
+func createQuota(
+	ctx context.Context,
+	quotaConfigPath string,
+	adminClients map[string]admin.Client,
+) error {
+	clusterConfigPath, err := clusterConfigForCreate(quotaConfigPath)
+	if err != nil {
+		return err
+	}
+
+	quotaConfigs, err := config.LoadQuotasFile(quotaConfigPath)
+	if err != nil {
+		return err
+	}
+
+	clusterConfig, err := config.LoadClusterFile(clusterConfigPath, createConfig.shared.expandEnv)
+	if err != nil {
+		return err
+	}
+
+	adminClient, ok := adminClients[clusterConfigPath]
+	if !ok {
+		adminClient, err = clusterConfig.NewAdminClient(
+			ctx,
+			nil,
+			config.AdminClientOpts{
+				ReadOnly:                  createConfig.dryRun,
+				UsernameOverride:          createConfig.shared.saslUsername,
+				PasswordOverride:          createConfig.shared.saslPassword,
+				SecretsManagerArnOverride: createConfig.shared.saslSecretsManagerArn,
+			},
+		)
+		if err != nil {
+			return err
+		}
+		adminClients[clusterConfigPath] = adminClient
+	}
+
+	cliRunner := cli.NewCLIRunner(adminClient, log.Infof, false)
+
+	for _, quotaConfig := range quotaConfigs {
+		log.Infof(
+			"Processing quotas %s in config %s with cluster config %s",
+			quotaConfig.Meta.Name,
+			quotaConfigPath,
+			clusterConfigPath,
+		)
+
+		quotaAdminConfig := quota.QuotaAdminConfig{
+			DryRun:        createConfig.dryRun,
+			SkipConfirm:   createConfig.skipConfirm,
+			Delete:        createConfig.delete,
+			QuotaConfig:   quotaConfig,
+			ClusterConfig: clusterConfig,
+		}
+
+		if err := cliRunner.CreateQuota(ctx, quotaAdminConfig); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func clusterConfigForCreate(aclConfigPath string) (string, error) {
 	if createConfig.shared.clusterConfig != "" {
 		return createConfig.shared.clusterConfig, nil
 	}
