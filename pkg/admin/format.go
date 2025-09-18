@@ -2,7 +2,6 @@ package admin
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -1005,12 +1004,62 @@ func FormatBrokerMaxPartitions(
 }
 
 func FormatQuotas(config []kafka.DescribeClientQuotasResponseQuotas) string {
-	content, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("Error marshalling quotas config: %+v", err)
+	buf := &bytes.Buffer{}
+
+	headers := []string{
+		"Entities",
+		"Producer byterate",
+		"Consumer byterate",
+		"Request percentage",
 	}
 
-	return string(content)
+	table := tablewriter.NewWriter(buf)
+	table.SetHeader(headers)
+	table.SetAutoWrapText(false)
+	table.SetColumnAlignment(
+		[]int{
+			tablewriter.ALIGN_LEFT,
+			tablewriter.ALIGN_LEFT,
+			tablewriter.ALIGN_LEFT,
+			tablewriter.ALIGN_LEFT,
+		},
+	)
+	table.SetBorders(
+		tablewriter.Border{
+			Left:   false,
+			Top:    true,
+			Right:  false,
+			Bottom: true,
+		},
+	)
+
+	for _, qt := range config {
+
+		var pRate, cRate, rPct string
+		for _, v := range qt.Values {
+			if v.Key == "producer_byte_rate"{
+				pRate = fmt.Sprintf("%.0f", v.Value)
+			}
+			if v.Key == "consumer_byte_rate"{
+				cRate = fmt.Sprintf("%.0f", v.Value)
+			}			
+			if v.Key == "request_percentage"{
+				rPct = fmt.Sprintf("%.0f", v.Value)
+			}
+		}
+		
+		row := []string{
+			fmt.Sprintf("%v", qt.Entities),
+			pRate,
+			cRate,
+			rPct,
+		}
+
+		table.Append(row)
+	}
+
+	table.Render()
+	return string(bytes.TrimRight(buf.Bytes(), "\n"))
 }
 
 // FormatACLs creates a pretty table that lists the details of the
