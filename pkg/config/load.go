@@ -37,6 +37,15 @@ func LoadClusterFile(path string, expandEnv bool) (ClusterConfig, error) {
 		return ClusterConfig{}, err
 	}
 
+	// we allow users to configure a comma separated string of bootstrapservers in a single array element
+	// in that case we expand the string into an array
+	if len(config.Spec.BootstrapAddrs) == 1 && strings.Contains(config.Spec.BootstrapAddrs[0], ",") {
+		config.Spec.BootstrapAddrs = strings.Split(config.Spec.BootstrapAddrs[0], ",")
+		for i := 0; i < len(config.Spec.BootstrapAddrs); i++ {
+			config.Spec.BootstrapAddrs[i] = strings.TrimSpace(config.Spec.BootstrapAddrs[i])
+		}
+	}	
+
 	config.RootDir = filepath.Dir(absPath)
 	return config, nil
 }
