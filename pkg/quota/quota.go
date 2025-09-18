@@ -221,7 +221,7 @@ func tryGetProvidedQuota(
 func tryGetExistingQuota(
 	providedQuotaEntities []config.QuotaEntity, 
 	operationKey string,
-	operationValue int32,
+	operationValue float64,
 	existingQuotas []config.Quota) *config.Quota {
 	for _, existingQuota := range existingQuotas {
 		if len(providedQuotaEntities) != len(existingQuota.Entities) {
@@ -287,7 +287,7 @@ func ToConfigQuotas(responseEntries []kafka.DescribeClientQuotasResponseQuotas) 
 		for _, operation := range quota.Values {
 			ops = append(ops, config.QuotaOperation{
 				Key:   operation.Key,
-				Value: int32(operation.Value),
+				Value: operation.Value,
 			})
 		}
 

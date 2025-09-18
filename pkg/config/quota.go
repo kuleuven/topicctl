@@ -24,8 +24,8 @@ type QuotaEntity struct {
 }
 
 type QuotaOperation struct {
-	Key   string `json:"key"`
-	Value int32  `json:"value"`
+	Key   string  `json:"key"`
+	Value float64 `json:"value"`
 }
 
 // Validate evaluates whether the ACL config is valid.
@@ -51,8 +51,8 @@ func (quota Quota) ToAlterQuotaEntry(mustRemove bool) kafka.AlterClientQuotaEntr
 	ops := []kafka.AlterClientQuotaOps{}
 	for _, operation := range quota.Operations {
 		ops = append(ops, kafka.AlterClientQuotaOps{
-			Key:   operation.Key,
-			Value: float64(operation.Value),
+			Key:    operation.Key,
+			Value:  operation.Value,
 			Remove: mustRemove,
 		})
 	}
