@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -147,11 +148,16 @@ func (s sharedOptions) getAdminClient(
 			}
 		}
 
+		brokerAddr := s.brokerAddr
+		if strings.Contains(s.brokerAddr, ",") {
+			brokerAddr = strings.TrimSpace(strings.Split(s.brokerAddr, ",")[0])
+		}
+
 		return admin.NewBrokerAdminClient(
 			ctx,
 			admin.BrokerAdminClientConfig{
 				ConnectorConfig: admin.ConnectorConfig{
-					BrokerAddr: s.brokerAddr,
+					BrokerAddr: brokerAddr,
 					TLS: admin.TLSConfig{
 						Enabled:    tlsEnabled,
 						CACertPath: s.tlsCACert,
