@@ -1,6 +1,9 @@
 package config
 
 import (
+	"errors"
+
+	"github.com/hashicorp/go-multierror"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -34,7 +37,14 @@ func (a *QuotaConfig) Validate() error {
 
 	err = a.Meta.Validate()
 
-	// TODO: add more validation
+	for _, q := range a.Spec.Quotas {
+		for _, ops := range q.Operations {
+			if ops.Value != float64(int(ops.Value)) {
+				err = multierror.Append(err, errors.New("Quota value cannot have fraction"))
+			}			
+		}
+	}
+
 
 	return err
 }
