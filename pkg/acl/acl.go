@@ -68,6 +68,7 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 	log.Info("Checking if ACLs already exists...")
 
 	acls := a.aclConfig.ToNewACLEntries()
+	log.Infof("Have %d provided ACLs", len(acls))
 
 	allExistingACLs := []kafka.ACLEntry{}
 	newACLs := []kafka.ACLEntry{}
@@ -94,9 +95,8 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 
 	if len(allExistingACLs) > 0 {
 		log.Infof(
-			"Found %d existing ACLs:\n%s",
+			"Found %d existing and matching ACLs (no action needed):",
 			len(allExistingACLs),
-			formatNewACLsConfig(allExistingACLs),
 		)
 	}
 
@@ -113,13 +113,7 @@ func (a *ACLAdmin) Create(ctx context.Context) error {
 			return fmt.Errorf("error checking for all ACLs: %v", err)
 		}
 		aclsToDelete = util.Difference(toACLEntries(clusterACLs), acls)
-		if len(aclsToDelete) > 0 {
-			log.Infof(
-				"Found %d ACLs to delete:\n%s",
-				len(aclsToDelete),
-				formatNewACLsConfig(aclsToDelete),
-			)
-		}
+		log.Infof("Have %d ACLs to remove", len(aclsToDelete))
 	}
 
 	if len(newACLs) == 0 {
